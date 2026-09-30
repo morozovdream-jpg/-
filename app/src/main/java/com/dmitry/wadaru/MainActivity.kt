@@ -309,7 +309,7 @@ private fun PaletteCard(
             }
             Spacer(Modifier.height(4.dp))
             Text(
-                p.colors.joinToString(" · ") { it.name },
+                p.colors.joinToString(" · ") { RussianColorNames.of(it.name) },
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.bodyMedium
@@ -500,9 +500,15 @@ private fun PaletteDetail(
             item {
                 Column(Modifier.padding(18.dp)) {
                     Text(
-                        palette.colors.joinToString(" · ") { it.name },
+                        palette.colors.joinToString(" · ") { RussianColorNames.of(it.name) },
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        palette.colors.joinToString(" · ") { it.name },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = .56f),
+                        modifier = Modifier.padding(top = 5.dp)
                     )
                     Spacer(Modifier.height(10.dp))
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -572,7 +578,14 @@ private fun ColorFactRow(c: WadaColor, copyHex: () -> Unit) {
         )
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(c.name, fontWeight = FontWeight.Medium)
+            Text(RussianColorNames.of(c.name), fontWeight = FontWeight.Medium)
+            if (RussianColorNames.of(c.name) != c.name) {
+                Text(
+                    c.name,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = .55f)
+                )
+            }
             Text(
                 c.wadaId?.let { "№ $it · ${c.hex}" } ?: c.hex,
                 fontFamily = FontFamily.Monospace,
