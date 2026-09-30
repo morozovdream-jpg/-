@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Five fan leaves: an original emblem inspired by Wada's color studies. -->
+    <path
+        android:fillColor="#E66C55"
+        android:pathData="M51,69 C39,72 25,69 20,56 C16,44 22,33 34,31 C44,30 50,42 51,69 Z" />
+    <path
+        android:fillColor="#E3B04B"
+        android:pathData="M52.5,68 C43,51 40,34 49,26 C57,19 68,22 72,31 C76,41 65,53 52.5,68 Z" />
+    <path
+        android:fillColor="#4F8D87"
+        android:pathData="M55,68 C56,47 62,29 74,27 C85,25 93,34 91,45 C89,56 73,62 55,68 Z" />
+    <path
+        android:fillColor="#2D456D"
+        android:pathData="M57,70 C73,55 88,49 95,57 C102,65 98,76 89,81 C79,86 67,78 57,70 Z" />
+    <path
+        android:fillColor="#9B83A5"
+        android:pathData="M56,72 C70,70 84,74 87,84 C90,94 81,101 70,98 C61,96 58,84 56,72 Z" />
+
+    <!-- Fine cream separations improve recognition at small launcher sizes. -->
+    <path
+        android:strokeColor="#F7F0E3"
+        android:strokeWidth="2.4"
+        android:strokeLineCap="round"
+        android:fillColor="@android:color/transparent"
+        android:pathData="M52,69 L34,31 M53.5,69 L72,31 M55.5,69 L91,45 M57,71 L89,81" />
+
+    <path
+        android:fillColor="#D8C19D"
+        android:pathData="M47,72 C47,66 51,62 57,62 C63,62 67,66 67,72 C67,78 63,82 57,82 C51,82 47,78 47,72 Z" />
+</vector>
