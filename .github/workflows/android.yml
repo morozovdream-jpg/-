@@ -1,0 +1,73 @@
+name: Android APK
+
+on:
+  push:
+    branches: [ "wada-russian-app" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dataset tools
+        run: pip install requests beautifulsoup4
+
+      - name: Build 581-palette offline dataset
+        run: python scripts/build_dataset.py
+
+      - name: Validate dataset
+        run: |
+          python - <<'PY'
+          import json
+          p=json.load(open("app/src/main/assets/palettes.json", encoding="utf-8"))
+          assert p["meta"]["total"] == 581
+          assert len(p["palettes"]) == 581
+          assert sum(x["volume"] == 1 for x in p["palettes"]) == 348
+          assert sum(x["volume"] == 2 for x in p["palettes"]) == 233
+          assert all(2 <= len(x["colors"]) <= 12 for x in p["palettes"])
+          assert all(c["hex"].startswith("#") and len(c["hex"]) == 7 for x in p["palettes"] for c in x["colors"])
+          print("Dataset OK:", len(p["palettes"]), "palettes")
+          PY
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Build debug APK
+        run: gradle :app:assembleDebug --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: WadaRu-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload verified dataset
+        uses: actions/upload-artifact@v4
+        with:
+          name: WadaRu-dataset
+          path: app/src/main/assets/palettes.json
+          retention-days: 30
