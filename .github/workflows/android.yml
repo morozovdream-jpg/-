@@ -5,6 +5,10 @@ on:
     branches: [ "wada-russian-app" ]
   workflow_dispatch:
 
+concurrency:
+  group: wadaru-apk-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -47,6 +51,20 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+
+      - name: Restore stable Android signing key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: wadaru-debug-keystore-v1
+
+      - name: Create stable signing key on first run
+        run: |
+          mkdir -p ~/.android
+          if [ ! -f ~/.android/debug.keystore ]; then
+            keytool -genkeypair -v               -keystore ~/.android/debug.keystore               -storepass android               -alias androiddebugkey               -keypass android               -dname "CN=WadaRu,O=WadaRu,C=RU"               -keyalg RSA               -keysize 2048               -validity 10000
+          fi
+          keytool -list -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey
 
       - name: Gradle
         uses: gradle/actions/setup-gradle@v4
