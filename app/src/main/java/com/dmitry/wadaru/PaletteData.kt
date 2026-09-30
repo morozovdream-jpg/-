@@ -149,8 +149,8 @@ object PaletteAnalyzer {
         val neutrals = hsl.count { it.s < .16 }
         val deepestIndex = luminances.indices.minByOrNull { luminances[it] } ?: 0
         val lightestIndex = luminances.indices.maxByOrNull { luminances[it] } ?: 0
-        val deepest = palette.colors[deepestIndex].name
-        val lightest = palette.colors[lightestIndex].name
+        val deepest = RussianColorNames.of(palette.colors[deepestIndex].name)
+        val lightest = RussianColorNames.of(palette.colors[lightestIndex].name)
 
         val short = buildString {
             append(
@@ -215,7 +215,7 @@ object PaletteAnalyzer {
             append(palette.id).append(' ')
             append(palette.number).append(' ')
             append(if (palette.volume == 1) "том 1 первый" else "том 2 второй").append(' ')
-            palette.colors.forEach { append(it.name).append(' ').append(it.hex).append(' ') }
+            palette.colors.forEach { append(it.name).append(' ').append(RussianColorNames.of(it.name)).append(' ').append(it.hex).append(' ') }
             append(analysis.temperature.label).append(' ')
             append(analysis.lightness.label).append(' ')
             append(analysis.chroma.label).append(' ')
