@@ -83,8 +83,8 @@ jobs:
           test -n "$AAB" && test -f "$AAB"
           test -n "$APK" && test -f "$APK"
 
-          cp "$AAB" out/WadaRu-1.5.3-release-unsigned.aab
-          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -f -p 4 "$APK" out/WadaRu-1.5.3-release-aligned-unsigned.apk
+          cp "$AAB" out/WadaRu-1.5.4-release-unsigned.aab
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -f -p 4 "$APK" out/WadaRu-1.5.4-release-aligned-unsigned.apk
 
           APKSIGNER_JAR="$(find "$ANDROID_HOME/build-tools/36.0.0" -type f -name 'apksigner*.jar' -print -quit || true)"
           if [ -n "$APKSIGNER_JAR" ]; then
@@ -96,21 +96,21 @@ jobs:
           cp project/docs/PRIVACY_POLICY_RU.html out/privacy-policy-ru.html
           cp project/docs/PRIVACY_POLICY_RU.md out/privacy-policy-ru.md
           cp -r project/store-listing out/store-listing
-          (cd project && zip -qr ../out/WadaRu-1.5.3-source.zip . -x 'app/build/*' '.gradle/*')
+          (cd project && zip -qr ../out/WadaRu-1.5.4-source.zip . -x 'app/build/*' '.gradle/*')
 
-          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging out/WadaRu-1.5.3-release-aligned-unsigned.apk > out/apk-badging.txt
-          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump permissions out/WadaRu-1.5.3-release-aligned-unsigned.apk > out/apk-permissions.txt
+          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging out/WadaRu-1.5.4-release-aligned-unsigned.apk > out/apk-badging.txt
+          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump permissions out/WadaRu-1.5.4-release-aligned-unsigned.apk > out/apk-permissions.txt
 
           cat out/apk-badging.txt
           cat out/apk-permissions.txt
 
-          grep -q "package: name='com.dmitry.wadaru'.*versionCode='8'.*versionName='1.5.3'" out/apk-badging.txt
+          grep -q "package: name='com.dmitry.wadaru'.*versionCode='9'.*versionName='1.5.4'" out/apk-badging.txt
           grep -q "minSdkVersion:'26'" out/apk-badging.txt
           grep -q "targetSdkVersion:'36'" out/apk-badging.txt
           ! grep -qi "android.permission.INTERNET" out/apk-permissions.txt
 
           # Startup-compatibility regression checks.
-          unzip -p out/WadaRu-1.5.3-release-aligned-unsigned.apk classes.dex > /tmp/classes.dex
+          unzip -p out/WadaRu-1.5.4-release-aligned-unsigned.apk classes.dex > /tmp/classes.dex
           strings /tmp/classes.dex | grep -q "Lcom/dmitry/wadaru/MainActivity;"
           strings /tmp/classes.dex | grep -q "Lcom/dmitry/wadaru/Api33Back;"
           ! strings /tmp/classes.dex | grep -q "Lcom/dmitry/wadaru/Api29Window;"
@@ -121,12 +121,19 @@ jobs:
           ! grep -q "Api29Window" project/app/src/main/java/com/dmitry/wadaru/MainActivity.java
           ! grep -q "androidx.activity" project/app/build.gradle.kts
 
+          # 1.5.4 UX regression checks.
+          grep -q "Фильтры каталога" project/app/src/main/assets/app.js
+          grep -q "Тематические категории" project/app/src/main/assets/app.js
+          grep -q "Фильтры каталога сохраняются" project/app/src/main/assets/app.js
+          grep -q "Сбросить всё" project/app/src/main/assets/app.js
+          ! grep -q 'class="filters"' project/app/src/main/assets/app.js
+
           (cd out && find . -maxdepth 1 -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS.txt)
 
       - name: Upload release build payload
         uses: actions/upload-artifact@v4
         with:
-          name: WadaRu-1.5.3-store-build
+          name: WadaRu-1.5.4-store-build
           path: out/
           if-no-files-found: error
           retention-days: 30
