@@ -85,7 +85,7 @@ main.write_text(s)
 gradle = root / "app/build.gradle.kts"
 g = gradle.read_text()
 if 'androidx.activity:activity:' not in g:
-    g += '\n\ndependencies {\n    implementation("androidx.activity:activity:1.11.0")\n}\n'
+    g += '\n\ndependencies {\n    implementation("androidx.activity:activity:1.13.0")\n}\n'
 gradle.write_text(g)
 
 props = root / "gradle.properties"
