@@ -1,5 +1,6 @@
 from pathlib import Path
 import shutil
+import re
 import sys
 
 root = Path(sys.argv[1] if len(sys.argv) > 1 else "project")
@@ -250,17 +251,13 @@ final class Api33Back {
 }
 ''')
 
-# Version bump for diagnostic crash-fix release.
+# Deterministic version bump for the 1.5.5 release.
 gradle = root / "app/build.gradle.kts"
 g = gradle.read_text()
-g = g.replace("versionCode = 10", "versionCode = 10")
-g = g.replace("versionCode = 10", "versionCode = 10")
-g = g.replace("versionCode = 10", "versionCode = 10")
-g = g.replace("versionCode = 10", "versionCode = 10")
-g = g.replace('versionName = "1.5.5"', 'versionName = "1.5.5"')
-g = g.replace('versionName = "1.5.5"', 'versionName = "1.5.5"')
-g = g.replace('versionName = "1.5.5"', 'versionName = "1.5.5"')
-g = g.replace('versionName = "1.5.5"', 'versionName = "1.5.5"')
+g, n_code = re.subn(r'versionCode\s*=\s*\d+', 'versionCode = 10', g, count=1)
+g, n_name = re.subn(r'versionName\s*=\s*"[^"]+"', 'versionName = "1.5.5"', g, count=1)
+if n_code != 1 or n_name != 1:
+    raise RuntimeError(f"Version bump failed: versionCode={n_code}, versionName={n_name}")
 # Keep the app framework-only; remove accidental AndroidX dependency blocks.
 if "dependencies {" in g and "androidx.activity:activity:" in g:
     before, _, tail = g.partition("\n\ndependencies {")
@@ -282,12 +279,6 @@ proguard.write_text("""# Release entry point and API-gated compatibility islands
 """)
 
 appjs = root / "app/src/main/assets/app.js"
-js = appjs.read_text()
-js = js.replace("Версия 1.5.5.", "Версия 1.5.5.")
-js = js.replace("Версия 1.5.5.", "Версия 1.5.5.")
-js = js.replace("Версия 1.5.5.", "Версия 1.5.5.")
-js = js.replace("Версия 1.5.5.", "Версия 1.5.5.")
-appjs.write_text(js)
 
 for ux_name in ("ux154.py", "ux155.py"):
     ux_patch = Path(__file__).resolve().parent / ux_name
@@ -295,6 +286,11 @@ for ux_name in ("ux154.py", "ux155.py"):
         compile(ux_patch.read_text(), str(ux_patch), "exec"),
         {"root": root, "__builtins__": __builtins__},
     )
+
+# Normalize the visible version after all UX migrations.
+js = appjs.read_text()
+js = re.sub(r'Версия 1\.5\.\d+\.', 'Версия 1.5.5.', js)
+appjs.write_text(js)
 
 release_notes = root / "store-listing/ru-RU/release-notes-1.5.5.txt"
 release_notes.write_text(
