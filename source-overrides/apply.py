@@ -3,58 +3,299 @@ import shutil
 import sys
 
 root = Path(sys.argv[1] if len(sys.argv) > 1 else "project")
+java = root / "app/src/main/java/com/dmitry/wadaru"
+java.mkdir(parents=True, exist_ok=True)
 
-# Keep the framework-only Activity. Android 13+ uses OnBackInvokedDispatcher;
-# Android 8-12 use the onBackPressed fallback. This avoids unnecessary AndroidX
-# runtime components and permissions in a tiny offline app.
-main = root / "app/src/main/java/com/dmitry/wadaru/MainActivity.java"
-s = main.read_text()
+# Crash-resilient launcher. The main Activity deliberately contains no direct
+# references to API-29/30/33-only classes, so older/vendor Android runtimes can
+# verify and load it safely.
+(java / "MainActivity.java").write_text(r'''package com.dmitry.wadaru;
 
-s = s.replace(
-'''        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            // This WebView only renders trusted bundled files and has no INTERNET permission.
-            settings.setSafeBrowsingEnabled(false);
+import android.annotation.SuppressLint;
+import android.app.Activity;
+import android.graphics.Color;
+import android.net.Uri;
+import android.os.Build;
+import android.os.Bundle;
+import android.view.View;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
+import android.widget.TextView;
+
+import java.io.ByteArrayInputStream;
+import java.io.PrintWriter;
+import java.io.StringWriter;
+
+public final class MainActivity extends Activity {
+    private static final String START_URL = "file:///android_asset/index.html";
+    private WebView webView;
+    private Object backToken;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        try {
+            configureWindow();
+            WebView.setWebContentsDebuggingEnabled(false);
+            createWebView(savedInstanceState);
+            registerBackHandler();
+        } catch (Throwable error) {
+            showStartupError(error);
         }
-''',
-''
-)
+    }
 
-s = s.replace(
-'''    @Override
-    @SuppressWarnings("deprecation")
-    public void onBackPressed() {
-''',
-'''    @Override
+    private void configureWindow() {
+        if (Build.VERSION.SDK_INT >= 29) {
+            Api29Window.configure(this);
+        }
+        if (Build.VERSION.SDK_INT >= 30) {
+            Api30Window.configure(this);
+        } else {
+            getWindow().setStatusBarColor(Color.rgb(24, 23, 19));
+            getWindow().setNavigationBarColor(Color.rgb(17, 17, 15));
+            getWindow().getDecorView().setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE |
+                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
+                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+            );
+        }
+    }
+
+    private void createWebView(Bundle state) {
+        WebView view = new WebView(this);
+        webView = view;
+        configureWebView(view);
+        setContentView(view);
+        if (state == null || view.restoreState(state) == null) {
+            view.loadUrl(START_URL);
+        }
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    private void configureWebView(WebView view) {
+        view.setBackgroundColor(Color.rgb(17, 17, 15));
+        view.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        view.setHorizontalScrollBarEnabled(false);
+        view.setVerticalScrollBarEnabled(false);
+
+        WebSettings settings = view.getSettings();
+        settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(true);
+        settings.setAllowFileAccess(true);
+        settings.setBlockNetworkLoads(true);
+
+        view.setWebViewClient(new WebViewClient() {
+            private boolean isAllowed(Uri uri) {
+                if (uri == null) return false;
+                String scheme = uri.getScheme();
+                if ("about".equals(scheme) || "data".equals(scheme)) return true;
+                if (!"file".equals(scheme)) return false;
+                String path = uri.getPath();
+                return path != null && path.startsWith("/android_asset/");
+            }
+
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest request) {
+                return !isAllowed(request.getUrl());
+            }
+
+            @Override
+            @SuppressWarnings("deprecation")
+            public boolean shouldOverrideUrlLoading(WebView v, String url) {
+                return !isAllowed(Uri.parse(url));
+            }
+
+            @Override
+            public WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest request) {
+                if (!isAllowed(request.getUrl())) {
+                    return new WebResourceResponse(
+                        "text/plain", "UTF-8", new ByteArrayInputStream(new byte[0])
+                    );
+                }
+                return super.shouldInterceptRequest(v, request);
+            }
+        });
+    }
+
+    private void registerBackHandler() {
+        if (Build.VERSION.SDK_INT >= 33) {
+            backToken = Api33Back.register(this, this::requestAppBack);
+        }
+    }
+
+    private void requestAppBack() {
+        WebView view = webView;
+        if (view == null) {
+            finish();
+            return;
+        }
+        view.evaluateJavascript(
+            "(window.__wadaruBack ? window.__wadaruBack() : false)",
+            result -> {
+                if (!"true".equals(result)) finish();
+            }
+        );
+    }
+
+    @Override
     @SuppressLint("GestureBackNavigation")
     @SuppressWarnings("deprecation")
     public void onBackPressed() {
-'''
-)
+        if (Build.VERSION.SDK_INT >= 33) {
+            super.onBackPressed();
+        } else {
+            requestAppBack();
+        }
+    }
 
-main.write_text(s)
+    private void showStartupError(Throwable error) {
+        try {
+            WebView old = webView;
+            webView = null;
+            if (old != null) {
+                try { old.destroy(); } catch (Throwable ignored) {}
+            }
 
-# Version bump for the crash-fix release.
+            StringWriter buffer = new StringWriter();
+            error.printStackTrace(new PrintWriter(buffer));
+            String trace = buffer.toString();
+            if (trace.length() > 7000) trace = trace.substring(0, 7000);
+
+            TextView text = new TextView(this);
+            int pad = (int) (20 * getResources().getDisplayMetrics().density);
+            text.setPadding(pad, pad, pad, pad);
+            text.setTextColor(Color.WHITE);
+            text.setBackgroundColor(Color.rgb(24, 23, 19));
+            text.setTextSize(14);
+            text.setTextIsSelectable(true);
+            text.setText(
+                "Цвета Вада — ошибка запуска\n\n" +
+                "Версия: 1.5.2 (7)\n" +
+                "Устройство: " + Build.MANUFACTURER + " " + Build.MODEL + "\n" +
+                "Android API: " + Build.VERSION.SDK_INT + "\n\n" +
+                error.getClass().getName() + ": " + String.valueOf(error.getMessage()) +
+                "\n\n" + trace +
+                "\n\nСделайте скриншот этого экрана и отправьте разработчику."
+            );
+            setContentView(text);
+        } catch (Throwable fatal) {
+            finish();
+        }
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        WebView view = webView;
+        if (view != null) {
+            try { view.saveState(outState); } catch (Throwable ignored) {}
+        }
+        super.onSaveInstanceState(outState);
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (Build.VERSION.SDK_INT >= 33 && backToken != null) {
+            try { Api33Back.unregister(this, backToken); } catch (Throwable ignored) {}
+            backToken = null;
+        }
+        WebView view = webView;
+        webView = null;
+        if (view != null) {
+            try {
+                view.stopLoading();
+                view.setWebViewClient(null);
+                view.loadUrl("about:blank");
+                view.clearHistory();
+                view.removeAllViews();
+                view.destroy();
+            } catch (Throwable ignored) {}
+        }
+        super.onDestroy();
+    }
+}
+''')
+
+(java / "Api29Window.java").write_text(r'''package com.dmitry.wadaru;
+
+import android.annotation.TargetApi;
+import android.app.Activity;
+
+@TargetApi(29)
+final class Api29Window {
+    private Api29Window() {}
+
+    static void configure(Activity activity) {
+        activity.getWindow().setNavigationBarContrastEnforced(false);
+        activity.getWindow().setStatusBarContrastEnforced(false);
+    }
+}
+''')
+
+(java / "Api30Window.java").write_text(r'''package com.dmitry.wadaru;
+
+import android.annotation.TargetApi;
+import android.app.Activity;
+import android.view.WindowInsetsController;
+
+@TargetApi(30)
+final class Api30Window {
+    private Api30Window() {}
+
+    static void configure(Activity activity) {
+        activity.getWindow().setDecorFitsSystemWindows(false);
+        WindowInsetsController controller = activity.getWindow().getInsetsController();
+        if (controller != null) {
+            controller.setSystemBarsAppearance(
+                0,
+                WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS |
+                WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
+            );
+        }
+    }
+}
+''')
+
+(java / "Api33Back.java").write_text(r'''package com.dmitry.wadaru;
+
+import android.annotation.TargetApi;
+import android.app.Activity;
+import android.window.OnBackInvokedCallback;
+import android.window.OnBackInvokedDispatcher;
+
+@TargetApi(33)
+final class Api33Back {
+    private Api33Back() {}
+
+    static Object register(Activity activity, Runnable action) {
+        OnBackInvokedCallback callback = action::run;
+        activity.getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+            OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+            callback
+        );
+        return callback;
+    }
+
+    static void unregister(Activity activity, Object token) {
+        if (token instanceof OnBackInvokedCallback) {
+            activity.getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(
+                (OnBackInvokedCallback) token
+            );
+        }
+    }
+}
+''')
+
+# Version bump for diagnostic crash-fix release.
 gradle = root / "app/build.gradle.kts"
 g = gradle.read_text()
-g = g.replace("versionCode = 5", "versionCode = 6")
-g = g.replace('versionName = "1.5.0"', 'versionName = "1.5.1"')
-gradle.write_text(g)
-
-appjs = root / "app/src/main/assets/app.js"
-js = appjs.read_text()
-js = js.replace("Версия 1.5.0.", "Версия 1.5.1.")
-appjs.write_text(js)
-
-release_notes = root / "store-listing/ru-RU/release-notes-1.5.1.txt"
-release_notes.write_text(
-    "Исправлен критический сбой при запуске версии 1.5.0 на реальном устройстве. "
-    "Упрощена стартовая Android-оболочка: удалена ненужная зависимость AndroidX Activity, "
-    "сохранена офлайн-работа и совместимость с Android 8+ и Android 16.\n"
-)
-
-# No AndroidX is required for this application.
-gradle = root / "app/build.gradle.kts"
-g = gradle.read_text()
+g = g.replace("versionCode = 5", "versionCode = 7")
+g = g.replace("versionCode = 6", "versionCode = 7")
+g = g.replace('versionName = "1.5.0"', 'versionName = "1.5.2"')
+g = g.replace('versionName = "1.5.1"', 'versionName = "1.5.2"')
+# Keep the app framework-only; remove accidental AndroidX dependency blocks.
 if "dependencies {" in g and "androidx.activity:activity:" in g:
     before, _, tail = g.partition("\n\ndependencies {")
     if "androidx.activity:activity:" in tail:
@@ -62,17 +303,25 @@ if "dependencies {" in g and "androidx.activity:activity:" in g:
 gradle.write_text(g)
 
 props = root / "gradle.properties"
-p = props.read_text()
-p = p.replace("android.useAndroidX=false\n", "")
-p = p.replace("android.useAndroidX=true\n", "")
+p = props.read_text().replace("android.useAndroidX=false\n", "").replace("android.useAndroidX=true\n", "")
 props.write_text(p)
 
-# Clean production manifest: no dangerous/runtime permissions, no INTERNET,
-# no hardcoded debuggable flag, no fixed orientation.
+appjs = root / "app/src/main/assets/app.js"
+js = appjs.read_text()
+js = js.replace("Версия 1.5.0.", "Версия 1.5.2.")
+js = js.replace("Версия 1.5.1.", "Версия 1.5.2.")
+appjs.write_text(js)
+
+release_notes = root / "store-listing/ru-RU/release-notes-1.5.2.txt"
+release_notes.write_text(
+    "Исправлен повторный сбой при запуске на отдельных Huawei/HarmonyOS-устройствах. "
+    "API-зависимые системные вызовы изолированы от основной Activity, а при ошибке WebView "
+    "теперь показывается диагностический экран вместо немедленного закрытия приложения.\n"
+)
+
 manifest = root / "app/src/main/AndroidManifest.xml"
 manifest.write_text('''<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Intentionally no INTERNET permission and no dangerous/runtime permissions. -->
     <application
         android:allowBackup="false"
         android:appCategory="productivity"
@@ -99,7 +348,6 @@ manifest.write_text('''<?xml version="1.0" encoding="utf-8"?>
 </manifest>
 ''')
 
-# API-26-safe base theme. API-specific theme values stay in qualified folders.
 themes = root / "app/src/main/res/values/themes.xml"
 themes.write_text('''<resources>
     <style name="Theme.WadaRu" parent="android:style/Theme.Material.NoActionBar">
@@ -115,12 +363,9 @@ themes.write_text('''<resources>
 ''')
 
 colors = root / "app/src/main/res/values/colors.xml"
-c = colors.read_text()
-c = c.replace('    <color name="wada_paper">#EEE7D7</color>\n', '')
-c = c.replace('    <color name="wada_paper">#E8E0CD</color>\n', '')
+c = colors.read_text().replace('    <color name="wada_paper">#EEE7D7</color>\n', '').replace('    <color name="wada_paper">#E8E0CD</color>\n', '')
 colors.write_text(c)
 
-# Since minSdk is 26, adaptive icons do not need a v26 qualifier.
 old = root / "app/src/main/res/mipmap-anydpi-v26"
 new = root / "app/src/main/res/mipmap-anydpi"
 new.mkdir(parents=True, exist_ok=True)
@@ -131,7 +376,6 @@ for name in ("ic_launcher.xml", "ic_launcher_round.xml"):
 if old.exists():
     shutil.rmtree(old)
 
-# Disable app-data cloud backup and device-transfer migration explicitly.
 xml = root / "app/src/main/res/xml"
 xml.mkdir(parents=True, exist_ok=True)
 (xml / "backup_rules.xml").write_text('''<?xml version="1.0" encoding="utf-8"?>
@@ -162,13 +406,13 @@ xml.mkdir(parents=True, exist_ok=True)
 </data-extraction-rules>
 ''')
 
-# Fail early if an accidental AndroidX dependency or obsolete WebView branch appears.
-final_main = main.read_text()
-assert "ComponentActivity" not in final_main
-assert "OnBackPressedCallback" not in final_main
-assert "OnBackInvokedDispatcher" in final_main
-assert '@SuppressLint("GestureBackNavigation")' in final_main
-assert "setSafeBrowsingEnabled" not in final_main
+# Hard assertions for the compatibility architecture.
+main_text = (java / "MainActivity.java").read_text()
+assert "android.window." not in main_text
+assert "WindowInsetsController" not in main_text
+assert "ComponentActivity" not in main_text
+assert "OnBackPressedCallback" not in main_text
+assert "showStartupError" in main_text
 assert "androidx.activity" not in gradle.read_text()
 
-print("Production source patch applied: framework-only Activity")
+print("Production source patch applied: 1.5.2 compatibility + startup diagnostics")
