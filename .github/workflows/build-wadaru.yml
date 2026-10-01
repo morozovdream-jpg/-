@@ -105,7 +105,7 @@ jobs:
           cat out/apk-permissions.txt
 
           grep -q "package: name='com.dmitry.wadaru'.*versionCode='5'.*versionName='1.5.0'" out/apk-badging.txt
-          grep -q "sdkVersion:'26'" out/apk-badging.txt
+          grep -q "minSdkVersion:'26'" out/apk-badging.txt
           grep -q "targetSdkVersion:'36'" out/apk-badging.txt
           ! grep -qi "android.permission.INTERNET" out/apk-permissions.txt
 
