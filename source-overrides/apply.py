@@ -176,7 +176,7 @@ public final class MainActivity extends Activity {
             text.setTextIsSelectable(true);
             text.setText(
                 "Цвета Вада — ошибка запуска\n\n" +
-                "Версия: 1.5.5 (10)\n" +
+                "Версия: 1.5.6 (11)\n" +
                 "Устройство: " + Build.MANUFACTURER + " " + Build.MODEL + "\n" +
                 "Android API: " + Build.VERSION.SDK_INT + "\n\n" +
                 error.getClass().getName() + ": " + String.valueOf(error.getMessage()) +
@@ -251,11 +251,11 @@ final class Api33Back {
 }
 ''')
 
-# Deterministic version bump for the 1.5.5 release.
+# Deterministic version bump for the 1.5.6 release.
 gradle = root / "app/build.gradle.kts"
 g = gradle.read_text()
-g, n_code = re.subn(r'versionCode\s*=\s*\d+', 'versionCode = 10', g, count=1)
-g, n_name = re.subn(r'versionName\s*=\s*"[^"]+"', 'versionName = "1.5.5"', g, count=1)
+g, n_code = re.subn(r'versionCode\s*=\s*\d+', 'versionCode = 11', g, count=1)
+g, n_name = re.subn(r'versionName\s*=\s*"[^"]+"', 'versionName = "1.5.6"', g, count=1)
 if n_code != 1 or n_name != 1:
     raise RuntimeError(f"Version bump failed: versionCode={n_code}, versionName={n_name}")
 # Keep the app framework-only; remove accidental AndroidX dependency blocks.
@@ -280,7 +280,7 @@ proguard.write_text("""# Release entry point and API-gated compatibility islands
 
 appjs = root / "app/src/main/assets/app.js"
 
-for ux_name in ("ux154.py", "ux155.py"):
+for ux_name in ("ux154.py", "ux155.py", "ux156.py"):
     ux_patch = Path(__file__).resolve().parent / ux_name
     exec(
         compile(ux_patch.read_text(), str(ux_patch), "exec"),
@@ -289,14 +289,14 @@ for ux_name in ("ux154.py", "ux155.py"):
 
 # Normalize the visible version after all UX migrations.
 js = appjs.read_text()
-js = re.sub(r'Версия 1\.5\.\d+\.', 'Версия 1.5.5.', js)
+js = re.sub(r'Версия 1\.5\.\d+\.', 'Версия 1.5.6.', js)
 appjs.write_text(js)
 
-release_notes = root / "store-listing/ru-RU/release-notes-1.5.5.txt"
+release_notes = root / "store-listing/ru-RU/release-notes-1.5.6.txt"
 release_notes.write_text(
-    "Переработаны обложки палитр и навигация. Каждая обложка теперь показывает все реальные "
-    "цвета сочетания без перекрытия. Фильтры открываются компактной нижней панелью с тремя "
-    "группами: том, количество цветов и категории. Добавлены настройки тёмной/светлой темы.\n"
+    "Возвращён фирменный художественный дизайн при точном соответствии цветов палитр. "
+    "Главная снова вынесена в нижнюю навигацию, фильтр расположен под поиском, верхняя часть "
+    "стала компактнее, а фон и обложки получили более выразительную композицию.\n"
 )
 
 manifest = root / "app/src/main/AndroidManifest.xml"
@@ -397,4 +397,4 @@ assert "OnBackPressedCallback" not in main_text
 assert "showStartupError" in main_text
 assert "androidx.activity" not in gradle.read_text()
 
-print("Production source patch applied: 1.5.5 exact palette covers + compact filters/settings")
+print("Production source patch applied: 1.5.6 restored Wada identity + compact home")
