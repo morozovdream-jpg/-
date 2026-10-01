@@ -57,6 +57,7 @@ jobs:
         working-directory: project
         shell: bash
         run: |
+          set +e
           set -uo pipefail
           gradle --no-daemon clean lintRelease --stacktrace
           status=$?
