@@ -289,11 +289,12 @@ js = js.replace("Версия 1.5.5.", "Версия 1.5.5.")
 js = js.replace("Версия 1.5.5.", "Версия 1.5.5.")
 appjs.write_text(js)
 
-ux_patch = Path(__file__).resolve().parent / "ux155.py"
-exec(
-    compile(ux_patch.read_text(), str(ux_patch), "exec"),
-    {"root": root, "__builtins__": __builtins__},
-)
+for ux_name in ("ux154.py", "ux155.py"):
+    ux_patch = Path(__file__).resolve().parent / ux_name
+    exec(
+        compile(ux_patch.read_text(), str(ux_patch), "exec"),
+        {"root": root, "__builtins__": __builtins__},
+    )
 
 release_notes = root / "store-listing/ru-RU/release-notes-1.5.5.txt"
 release_notes.write_text(
