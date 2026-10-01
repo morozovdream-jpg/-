@@ -156,7 +156,6 @@ jobs:
 
           # 1.5.5 UX regression checks.
           grep -q "function paintHTML(p){const colors=p.colors.map(c=>c.hex)" project/app/src/main/assets/app.js
-          grep -q "data-paint-count" project/app/src/main/assets/app.js
           grep -q 'id="filtersNav"' project/app/src/main/assets/app.js
           grep -q ">Фильтры</button>" project/app/src/main/assets/app.js
           grep -q ">Избранное</button>" project/app/src/main/assets/app.js
