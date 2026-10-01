@@ -33,6 +33,25 @@ s = s.replace(
 
 main.write_text(s)
 
+# Version bump for the crash-fix release.
+gradle = root / "app/build.gradle.kts"
+g = gradle.read_text()
+g = g.replace("versionCode = 5", "versionCode = 6")
+g = g.replace('versionName = "1.5.0"', 'versionName = "1.5.1"')
+gradle.write_text(g)
+
+appjs = root / "app/src/main/assets/app.js"
+js = appjs.read_text()
+js = js.replace("Версия 1.5.0.", "Версия 1.5.1.")
+appjs.write_text(js)
+
+release_notes = root / "store-listing/ru-RU/release-notes-1.5.1.txt"
+release_notes.write_text(
+    "Исправлен критический сбой при запуске версии 1.5.0 на реальном устройстве. "
+    "Упрощена стартовая Android-оболочка: удалена ненужная зависимость AndroidX Activity, "
+    "сохранена офлайн-работа и совместимость с Android 8+ и Android 16.\n"
+)
+
 # No AndroidX is required for this application.
 gradle = root / "app/build.gradle.kts"
 g = gradle.read_text()
