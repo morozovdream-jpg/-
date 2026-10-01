@@ -34,6 +34,39 @@ jobs:
           python3 source-overrides/apply.py project
           python3 project/tools/validate_data.py
           node --check project/app/src/main/assets/app.js
+          node - <<'NODE'
+          const fs = require('fs');
+          global.window = {};
+          eval(fs.readFileSync('project/app/src/main/assets/appdata.js','utf8'));
+          const D = window.WADA_DATA?.palettes;
+          if (!Array.isArray(D) || D.length !== 581) throw new Error('Expected 581 palettes');
+
+          const app = fs.readFileSync('project/app/src/main/assets/app.js','utf8');
+          const start = app.indexOf('function paintHTML(p)');
+          const end = app.indexOf('\nfunction heart', start);
+          if (start < 0 || end < 0) throw new Error('paintHTML not found');
+          const fnSource = app.slice(start, end);
+          const paintHTML = new Function(fnSource + '; return paintHTML;')();
+
+          let maxColors = 0;
+          for (const p of D) {
+            const expected = p.colors.map(c => String(c.hex).toUpperCase());
+            maxColors = Math.max(maxColors, expected.length);
+            if (expected.length < 2 || expected.length > 9) {
+              throw new Error(p.id + ': unexpected color count ' + expected.length);
+            }
+            for (const hex of expected) {
+              if (!/^#[0-9A-F]{6}$/.test(hex)) throw new Error(p.id + ': invalid HEX ' + hex);
+            }
+            const html = paintHTML(p);
+            const actual = [...html.matchAll(/style="background:(#[0-9A-Fa-f]{6})"/g)]
+              .map(m => m[1].toUpperCase());
+            if (actual.length !== expected.length || actual.some((hex, i) => hex !== expected[i])) {
+              throw new Error(p.id + ': cover mismatch: ' + JSON.stringify({expected, actual}));
+            }
+          }
+          console.log('Cover validation passed:', D.length, 'palettes; max colors =', maxColors);
+          NODE
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -83,8 +116,8 @@ jobs:
           test -n "$AAB" && test -f "$AAB"
           test -n "$APK" && test -f "$APK"
 
-          cp "$AAB" out/WadaRu-1.5.4-release-unsigned.aab
-          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -f -p 4 "$APK" out/WadaRu-1.5.4-release-aligned-unsigned.apk
+          cp "$AAB" out/WadaRu-1.5.5-release-unsigned.aab
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -f -p 4 "$APK" out/WadaRu-1.5.5-release-aligned-unsigned.apk
 
           APKSIGNER_JAR="$(find "$ANDROID_HOME/build-tools/36.0.0" -type f -name 'apksigner*.jar' -print -quit || true)"
           if [ -n "$APKSIGNER_JAR" ]; then
@@ -96,21 +129,21 @@ jobs:
           cp project/docs/PRIVACY_POLICY_RU.html out/privacy-policy-ru.html
           cp project/docs/PRIVACY_POLICY_RU.md out/privacy-policy-ru.md
           cp -r project/store-listing out/store-listing
-          (cd project && zip -qr ../out/WadaRu-1.5.4-source.zip . -x 'app/build/*' '.gradle/*')
+          (cd project && zip -qr ../out/WadaRu-1.5.5-source.zip . -x 'app/build/*' '.gradle/*')
 
-          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging out/WadaRu-1.5.4-release-aligned-unsigned.apk > out/apk-badging.txt
-          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump permissions out/WadaRu-1.5.4-release-aligned-unsigned.apk > out/apk-permissions.txt
+          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging out/WadaRu-1.5.5-release-aligned-unsigned.apk > out/apk-badging.txt
+          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump permissions out/WadaRu-1.5.5-release-aligned-unsigned.apk > out/apk-permissions.txt
 
           cat out/apk-badging.txt
           cat out/apk-permissions.txt
 
-          grep -q "package: name='com.dmitry.wadaru'.*versionCode='9'.*versionName='1.5.4'" out/apk-badging.txt
+          grep -q "package: name='com.dmitry.wadaru'.*versionCode='10'.*versionName='1.5.5'" out/apk-badging.txt
           grep -q "minSdkVersion:'26'" out/apk-badging.txt
           grep -q "targetSdkVersion:'36'" out/apk-badging.txt
           ! grep -qi "android.permission.INTERNET" out/apk-permissions.txt
 
           # Startup-compatibility regression checks.
-          unzip -p out/WadaRu-1.5.4-release-aligned-unsigned.apk classes.dex > /tmp/classes.dex
+          unzip -p out/WadaRu-1.5.5-release-aligned-unsigned.apk classes.dex > /tmp/classes.dex
           strings /tmp/classes.dex | grep -q "Lcom/dmitry/wadaru/MainActivity;"
           strings /tmp/classes.dex | grep -q "Lcom/dmitry/wadaru/Api33Back;"
           ! strings /tmp/classes.dex | grep -q "Lcom/dmitry/wadaru/Api29Window;"
@@ -121,11 +154,18 @@ jobs:
           ! grep -q "Api29Window" project/app/src/main/java/com/dmitry/wadaru/MainActivity.java
           ! grep -q "androidx.activity" project/app/build.gradle.kts
 
-          # 1.5.4 UX regression checks.
-          grep -q "Фильтры каталога" project/app/src/main/assets/app.js
-          grep -q "Тематические категории" project/app/src/main/assets/app.js
-          grep -q "Фильтры каталога сохраняются" project/app/src/main/assets/app.js
-          grep -q "Сбросить всё" project/app/src/main/assets/app.js
+          # 1.5.5 UX regression checks.
+          grep -q "function paintHTML(p){const colors=p.colors.map(c=>c.hex)" project/app/src/main/assets/app.js
+          grep -q "data-paint-count" project/app/src/main/assets/app.js
+          grep -q 'id="filtersNav"' project/app/src/main/assets/app.js
+          grep -q ">Фильтры</button>" project/app/src/main/assets/app.js
+          grep -q ">Избранное</button>" project/app/src/main/assets/app.js
+          grep -q ">Настройки</button>" project/app/src/main/assets/app.js
+          grep -q "category-scroll" project/app/src/main/assets/app.js
+          grep -q 'data-theme-choice="dark"' project/app/src/main/assets/app.js
+          grep -q 'data-theme-choice="light"' project/app/src/main/assets/app.js
+          grep -q "wada-theme" project/app/src/main/assets/app.js
+          ! grep -q 'data-tab="categories"' project/app/src/main/assets/app.js
           ! grep -q 'class="filters"' project/app/src/main/assets/app.js
 
           (cd out && find . -maxdepth 1 -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS.txt)
@@ -133,7 +173,7 @@ jobs:
       - name: Upload release build payload
         uses: actions/upload-artifact@v4
         with:
-          name: WadaRu-1.5.4-store-build
+          name: WadaRu-1.5.5-store-build
           path: out/
           if-no-files-found: error
           retention-days: 30
