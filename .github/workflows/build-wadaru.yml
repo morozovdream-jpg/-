@@ -53,12 +53,24 @@ jobs:
         with:
           gradle-version: "9.1.0"
 
-      - name: Lint and build release APK + AAB
+      - name: Lint release
+        working-directory: project
+        shell: bash
+        run: |
+          set -uo pipefail
+          gradle --no-daemon clean lintRelease --stacktrace
+          status=$?
+          if [ -f app/build/reports/lint-results-release.txt ]; then
+            cat app/build/reports/lint-results-release.txt
+          fi
+          exit "$status"
+
+      - name: Build release APK + AAB
         working-directory: project
         shell: bash
         run: |
           set -euo pipefail
-          gradle --no-daemon clean lintRelease assembleRelease bundleRelease --stacktrace
+          gradle --no-daemon assembleRelease bundleRelease --stacktrace
 
       - name: Prepare unsigned release payload
         shell: bash
