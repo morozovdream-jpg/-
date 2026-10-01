@@ -5,6 +5,7 @@ on:
     branches: [ "wadaru-store-release" ]
     paths:
       - "source-parts/**"
+      - "source-overrides/**"
       - ".github/workflows/build-wadaru.yml"
   workflow_dispatch:
 
@@ -30,6 +31,7 @@ jobs:
           sha256sum /tmp/wadaru-source.tgz
           tar -tzf /tmp/wadaru-source.tgz >/dev/null
           tar -xzf /tmp/wadaru-source.tgz -C project
+          python3 source-overrides/apply.py project
           python3 project/tools/validate_data.py
           node --check project/app/src/main/assets/app.js
 
@@ -57,17 +59,8 @@ jobs:
         working-directory: project
         shell: bash
         run: |
-          set +e
-          set -uo pipefail
+          set -euo pipefail
           gradle --no-daemon clean lintRelease --stacktrace
-          status=$?
-          REPORT="app/build/intermediates/lint_intermediate_text_report/release/lintReportRelease/lint-results-release.txt"
-          if [ -f "$REPORT" ]; then
-            echo "===== COMPLETE LINT REPORT ====="
-            cat "$REPORT"
-            echo "===== END LINT REPORT ====="
-          fi
-          exit "$status"
 
       - name: Build release APK + AAB
         working-directory: project
