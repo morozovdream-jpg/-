@@ -38,29 +38,30 @@ public final class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         try {
-            configureWindow();
             WebView.setWebContentsDebuggingEnabled(false);
             createWebView(savedInstanceState);
+            configureWindowBestEffort();
             registerBackHandler();
         } catch (Throwable error) {
             showStartupError(error);
         }
     }
 
-    private void configureWindow() {
-        if (Build.VERSION.SDK_INT >= 29) {
-            Api29Window.configure(this);
-        }
-        if (Build.VERSION.SDK_INT >= 30) {
-            Api30Window.configure(this);
-        } else {
+    @SuppressWarnings("deprecation")
+    private void configureWindowBestEffort() {
+        try {
             getWindow().setStatusBarColor(Color.rgb(24, 23, 19));
             getWindow().setNavigationBarColor(Color.rgb(17, 17, 15));
-            getWindow().getDecorView().setSystemUiVisibility(
-                View.SYSTEM_UI_FLAG_LAYOUT_STABLE |
-                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
-                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-            );
+            View decor = getWindow().getDecorView();
+            if (decor != null) {
+                decor.setSystemUiVisibility(
+                    View.SYSTEM_UI_FLAG_LAYOUT_STABLE |
+                    View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
+                    View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                );
+            }
+        } catch (Throwable ignored) {
+            // System-bar styling must never prevent the app from starting.
         }
     }
 
@@ -219,46 +220,6 @@ public final class MainActivity extends Activity {
 }
 ''')
 
-(java / "Api29Window.java").write_text(r'''package com.dmitry.wadaru;
-
-import android.annotation.TargetApi;
-import android.app.Activity;
-
-@TargetApi(29)
-final class Api29Window {
-    private Api29Window() {}
-
-    static void configure(Activity activity) {
-        activity.getWindow().setNavigationBarContrastEnforced(false);
-        activity.getWindow().setStatusBarContrastEnforced(false);
-    }
-}
-''')
-
-(java / "Api30Window.java").write_text(r'''package com.dmitry.wadaru;
-
-import android.annotation.TargetApi;
-import android.app.Activity;
-import android.view.WindowInsetsController;
-
-@TargetApi(30)
-final class Api30Window {
-    private Api30Window() {}
-
-    static void configure(Activity activity) {
-        activity.getWindow().setDecorFitsSystemWindows(false);
-        WindowInsetsController controller = activity.getWindow().getInsetsController();
-        if (controller != null) {
-            controller.setSystemBarsAppearance(
-                0,
-                WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS |
-                WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
-            );
-        }
-    }
-}
-''')
-
 (java / "Api33Back.java").write_text(r'''package com.dmitry.wadaru;
 
 import android.annotation.TargetApi;
@@ -292,10 +253,11 @@ final class Api33Back {
 # Version bump for diagnostic crash-fix release.
 gradle = root / "app/build.gradle.kts"
 g = gradle.read_text()
-g = g.replace("versionCode = 5", "versionCode = 7")
-g = g.replace("versionCode = 6", "versionCode = 7")
-g = g.replace('versionName = "1.5.0"', 'versionName = "1.5.2"')
-g = g.replace('versionName = "1.5.1"', 'versionName = "1.5.2"')
+g = g.replace("versionCode = 5", "versionCode = 8")
+g = g.replace("versionCode = 6", "versionCode = 8")
+g = g.replace('versionName = "1.5.0"', 'versionName = "1.5.3"')
+g = g.replace('versionName = "1.5.1"', 'versionName = "1.5.3"')
+g = g.replace('versionName = "1.5.2"', 'versionName = "1.5.3"')
 # Keep the app framework-only; remove accidental AndroidX dependency blocks.
 if "dependencies {" in g and "androidx.activity:activity:" in g:
     before, _, tail = g.partition("\n\ndependencies {")
@@ -313,22 +275,21 @@ props.write_text(p)
 proguard = root / "app/proguard-rules.pro"
 proguard.write_text("""# Release entry point and API-gated compatibility islands.
 -keep public class com.dmitry.wadaru.MainActivity { public <init>(); }
--keep class com.dmitry.wadaru.Api29Window { *; }
--keep class com.dmitry.wadaru.Api30Window { *; }
 -keep class com.dmitry.wadaru.Api33Back { *; }
 """)
 
 appjs = root / "app/src/main/assets/app.js"
 js = appjs.read_text()
-js = js.replace("Версия 1.5.0.", "Версия 1.5.2.")
-js = js.replace("Версия 1.5.1.", "Версия 1.5.2.")
+js = js.replace("Версия 1.5.0.", "Версия 1.5.3.")
+js = js.replace("Версия 1.5.1.", "Версия 1.5.3.")
+js = js.replace("Версия 1.5.2.", "Версия 1.5.3.")
 appjs.write_text(js)
 
-release_notes = root / "store-listing/ru-RU/release-notes-1.5.2.txt"
+release_notes = root / "store-listing/ru-RU/release-notes-1.5.3.txt"
 release_notes.write_text(
-    "Исправлен повторный сбой при запуске на отдельных Huawei/HarmonyOS-устройствах. "
-    "API-зависимые системные вызовы изолированы от основной Activity, а при ошибке WebView "
-    "теперь показывается диагностический экран вместо немедленного закрытия приложения.\n"
+    "Исправлен сбой запуска на Huawei/HarmonyOS Android API 31, вызванный ранним обращением "
+    "к WindowInsetsController. Оформление системных панелей теперь выполняется после создания "
+    "интерфейса и не может прервать запуск приложения.\n"
 )
 
 manifest = root / "app/src/main/AndroidManifest.xml"
@@ -422,9 +383,11 @@ xml.mkdir(parents=True, exist_ok=True)
 main_text = (java / "MainActivity.java").read_text()
 assert "android.window." not in main_text
 assert "WindowInsetsController" not in main_text
+assert "Api30Window" not in main_text
+assert "Api29Window" not in main_text
 assert "ComponentActivity" not in main_text
 assert "OnBackPressedCallback" not in main_text
 assert "showStartupError" in main_text
 assert "androidx.activity" not in gradle.read_text()
 
-print("Production source patch applied: 1.5.2 compatibility + startup diagnostics")
+print("Production source patch applied: 1.5.3 Huawei API31 window fix + startup diagnostics")
