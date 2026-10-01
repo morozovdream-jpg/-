@@ -60,8 +60,11 @@ jobs:
           set -uo pipefail
           gradle --no-daemon clean lintRelease --stacktrace
           status=$?
-          if [ -f app/build/reports/lint-results-release.txt ]; then
-            cat app/build/reports/lint-results-release.txt
+          REPORT="app/build/intermediates/lint_intermediate_text_report/release/lintReportRelease/lint-results-release.txt"
+          if [ -f "$REPORT" ]; then
+            echo "===== COMPLETE LINT REPORT ====="
+            cat "$REPORT"
+            echo "===== END LINT REPORT ====="
           fi
           exit "$status"
 
