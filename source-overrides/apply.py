@@ -151,7 +151,7 @@ public final class MainActivity extends Activity {
         }
     }
 
-    private void showStartupError(Throwable error) {
+    @SuppressLint("SetTextI18n")\n    private void showStartupError(Throwable error) {
         try {
             WebView old = webView;
             webView = null;
