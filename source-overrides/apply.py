@@ -306,6 +306,17 @@ props = root / "gradle.properties"
 p = props.read_text().replace("android.useAndroidX=false\n", "").replace("android.useAndroidX=true\n", "")
 props.write_text(p)
 
+# Keep API-gated helper classes physically separate in release DEX. Without
+# these rules R8 may inline them back into MainActivity and defeat old-API
+# class-verification safety.
+proguard = root / "app/proguard-rules.pro"
+proguard.write_text("""# Release entry point and API-gated compatibility islands.
+-keep public class com.dmitry.wadaru.MainActivity { public <init>(); }
+-keep class com.dmitry.wadaru.Api29Window { *; }
+-keep class com.dmitry.wadaru.Api30Window { *; }
+-keep class com.dmitry.wadaru.Api33Back { *; }
+""")
+
 appjs = root / "app/src/main/assets/app.js"
 js = appjs.read_text()
 js = js.replace("Версия 1.5.0.", "Версия 1.5.2.")
