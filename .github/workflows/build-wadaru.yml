@@ -14,13 +14,13 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
       - name: Checkout build branch
         uses: actions/checkout@v4
 
-      - name: Restore production source
+      - name: Restore and validate production source
         shell: bash
         run: |
           set -euo pipefail
@@ -35,186 +35,21 @@ jobs:
           python3 project/tools/validate_data.py
           node --check project/app/src/main/assets/app.js
 
-          # Apply production hardening that is also kept in the local canonical source.
-          python3 - <<'PY'
-          from pathlib import Path
-
-          p = Path("project/app/src/main/java/com/dmitry/wadaru/MainActivity.java")
-          src = p.read_text()
-          src = src.replace("import android.app.Activity;\n", "")
-          src = src.replace("import android.window.OnBackInvokedCallback;\nimport android.window.OnBackInvokedDispatcher;\n", "")
-          if "import androidx.activity.ComponentActivity;" not in src:
-              src = src.replace(
-                  "import java.io.ByteArrayInputStream;\n\n",
-                  "import java.io.ByteArrayInputStream;\n\n"
-                  "import androidx.activity.ComponentActivity;\n"
-                  "import androidx.activity.OnBackPressedCallback;\n\n"
-              )
-          src = src.replace("public final class MainActivity extends Activity {", "public final class MainActivity extends ComponentActivity {")
-          src = src.replace("    private OnBackInvokedCallback backCallback;\n", "")
-          src = src.replace(
-              '''        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            // This WebView only renders trusted bundled files and has no INTERNET permission.
-            settings.setSafeBrowsingEnabled(false);
-        }
-''',
-              ""
-          )
-          src = src.replace(
-              '''    private void registerBackHandler() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            backCallback = this::requestAppBack;
-            getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
-                OnBackInvokedDispatcher.PRIORITY_DEFAULT,
-                backCallback
-            );
-        }
-    }
-''',
-              '''    private void registerBackHandler() {
-        getOnBackPressedDispatcher().addCallback(
-            this,
-            new OnBackPressedCallback(true) {
-                @Override
-                public void handleOnBackPressed() {
-                    requestAppBack();
-                }
-            }
-        );
-    }
-'''
-          )
-          src = src.replace(
-              '''    @Override
-    @SuppressWarnings("deprecation")
-    public void onBackPressed() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            super.onBackPressed();
-        } else {
-            requestAppBack();
-        }
-    }
-
-''',
-              ""
-          )
-          src = src.replace(
-              '''        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && backCallback != null) {
-            getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(backCallback);
-            backCallback = null;
-        }
-''',
-              ""
-          )
-          p.write_text(src)
-
-          g = Path("project/app/build.gradle.kts")
-          gradle = g.read_text()
-          if 'androidx.activity:activity:' not in gradle:
-              gradle += '\n\ndependencies {\n    implementation("androidx.activity:activity:1.11.0")\n}\n'
-          g.write_text(gradle)
-
-          colors = Path("project/app/src/main/res/values/colors.xml")
-          if colors.exists():
-              c = colors.read_text()
-              c = c.replace('    <color name="wada_paper">#E8E0CD</color>\n', '')
-              colors.write_text(c)
-          PY
-
-          cat > project/app/src/main/AndroidManifest.xml <<'EOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-              <!-- Intentionally no INTERNET permission and no dangerous/runtime permissions. -->
-              <application
-                  android:allowBackup="false"
-                  android:appCategory="productivity"
-                  android:fullBackupContent="@xml/backup_rules"
-                  android:dataExtractionRules="@xml/data_extraction_rules"
-                  android:hardwareAccelerated="true"
-                  android:icon="@mipmap/ic_launcher"
-                  android:label="@string/app_name"
-                  android:networkSecurityConfig="@xml/network_security_config"
-                  android:roundIcon="@mipmap/ic_launcher_round"
-                  android:supportsRtl="true"
-                  android:theme="@style/Theme.WadaRu"
-                  android:usesCleartextTraffic="false">
-                  <activity
-                      android:name=".MainActivity"
-                      android:exported="true"
-                      android:resizeableActivity="true">
-                      <intent-filter>
-                          <action android:name="android.intent.action.MAIN" />
-                          <category android:name="android.intent.category.LAUNCHER" />
-                      </intent-filter>
-                  </activity>
-              </application>
-          </manifest>
-          EOF
-
-          cat > project/app/src/main/res/values/themes.xml <<'EOF'
-          <resources>
-              <style name="Theme.WadaRu" parent="android:style/Theme.Material.NoActionBar">
-                  <item name="android:fontFamily">sans</item>
-                  <item name="android:windowActionModeOverlay">true</item>
-                  <item name="android:windowBackground">@color/wada_bg</item>
-                  <item name="android:colorAccent">#A69BBF</item>
-                  <item name="android:statusBarColor">@color/wada_surface</item>
-                  <item name="android:navigationBarColor">@color/wada_bg</item>
-                  <item name="android:windowLightStatusBar">false</item>
-              </style>
-          </resources>
-          EOF
-
-          cat > project/app/src/main/res/xml/backup_rules.xml <<'EOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <full-backup-content>
-              <exclude domain="root" path="." />
-              <exclude domain="file" path="." />
-              <exclude domain="database" path="." />
-              <exclude domain="sharedpref" path="." />
-              <exclude domain="external" path="." />
-          </full-backup-content>
-          EOF
-
-          cat > project/app/src/main/res/xml/data_extraction_rules.xml <<'EOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <data-extraction-rules>
-              <cloud-backup>
-                  <exclude domain="root" path="." />
-                  <exclude domain="file" path="." />
-                  <exclude domain="database" path="." />
-                  <exclude domain="sharedpref" path="." />
-                  <exclude domain="external" path="." />
-              </cloud-backup>
-              <device-transfer>
-                  <exclude domain="root" path="." />
-                  <exclude domain="file" path="." />
-                  <exclude domain="database" path="." />
-                  <exclude domain="sharedpref" path="." />
-                  <exclude domain="external" path="." />
-              </device-transfer>
-          </data-extraction-rules>
-          EOF
-
-          if [ -d project/app/src/main/res/mipmap-anydpi-v26 ]; then
-            mkdir -p project/app/src/main/res/mipmap-anydpi
-            mv project/app/src/main/res/mipmap-anydpi-v26/* project/app/src/main/res/mipmap-anydpi/
-            rmdir project/app/src/main/res/mipmap-anydpi-v26
-          fi
-
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
+
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
         with:
-          packages: ''
+          packages: ""
 
       - name: Install Android 16 SDK
         shell: bash
         run: |
+          set -euo pipefail
           sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
 
       - name: Set up Gradle 9.1
@@ -229,45 +64,51 @@ jobs:
           set -euo pipefail
           gradle --no-daemon clean lintRelease --stacktrace
 
-      - name: Build release APK + AAB
+      - name: Build release APK and AAB
         working-directory: project
         shell: bash
         run: |
           set -euo pipefail
           gradle --no-daemon assembleRelease bundleRelease --stacktrace
 
-      - name: Prepare unsigned release payload
+      - name: Prepare release payload
         shell: bash
         run: |
-          set -euo pipefail
+          set -euxo pipefail
           mkdir -p out
-          echo "===== BUILD OUTPUTS ====="
           find project/app/build/outputs -maxdepth 5 -type f -print | sort
-          AAB="project/app/build/outputs/bundle/release/app-release.aab"
+
+          AAB="$(find project/app/build/outputs/bundle/release -maxdepth 1 -type f -name '*.aab' -print -quit)"
           APK="$(find project/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -print -quit)"
-          test -f "$AAB"
-          test -n "$APK"
-          test -f "$APK"
-          echo "Using APK: $APK"
+          test -n "$AAB" && test -f "$AAB"
+          test -n "$APK" && test -f "$APK"
+
           cp "$AAB" out/WadaRu-1.5.0-release-unsigned.aab
           "$ANDROID_HOME/build-tools/36.0.0/zipalign" -f -p 4 "$APK" out/WadaRu-1.5.0-release-aligned-unsigned.apk
-          if [ -f "$ANDROID_HOME/build-tools/36.0.0/lib/apksigner.jar" ]; then
-            cp "$ANDROID_HOME/build-tools/36.0.0/lib/apksigner.jar" out/apksigner.jar
+
+          APKSIGNER_JAR="$(find "$ANDROID_HOME/build-tools/36.0.0" -type f -name 'apksigner*.jar' -print -quit || true)"
+          if [ -n "$APKSIGNER_JAR" ]; then
+            cp "$APKSIGNER_JAR" out/apksigner.jar
           fi
+
           cp project/app/build/reports/lint-results-release.html out/lint-results-release.html || true
           cp project/app/build/reports/lint-results-release.xml out/lint-results-release.xml || true
           cp project/docs/PRIVACY_POLICY_RU.html out/privacy-policy-ru.html
           cp project/docs/PRIVACY_POLICY_RU.md out/privacy-policy-ru.md
           cp -r project/store-listing out/store-listing
           (cd project && zip -qr ../out/WadaRu-1.5.0-source.zip . -x 'app/build/*' '.gradle/*')
+
           "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging out/WadaRu-1.5.0-release-aligned-unsigned.apk > out/apk-badging.txt
           "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump permissions out/WadaRu-1.5.0-release-aligned-unsigned.apk > out/apk-permissions.txt
+
           cat out/apk-badging.txt
           cat out/apk-permissions.txt
+
           grep -q "package: name='com.dmitry.wadaru'.*versionCode='5'.*versionName='1.5.0'" out/apk-badging.txt
           grep -q "sdkVersion:'26'" out/apk-badging.txt
           grep -q "targetSdkVersion:'36'" out/apk-badging.txt
           ! grep -qi "android.permission.INTERNET" out/apk-permissions.txt
+
           (cd out && find . -maxdepth 1 -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS.txt)
 
       - name: Upload release build payload
