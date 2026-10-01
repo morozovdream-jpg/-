@@ -4,27 +4,12 @@ import sys
 
 root = Path(sys.argv[1] if len(sys.argv) > 1 else "project")
 
-# Android 16 / predictive-back compliant Activity.
+# Keep the framework-only Activity. Android 13+ uses OnBackInvokedDispatcher;
+# Android 8-12 use the onBackPressed fallback. This avoids unnecessary AndroidX
+# runtime components and permissions in a tiny offline app.
 main = root / "app/src/main/java/com/dmitry/wadaru/MainActivity.java"
 s = main.read_text()
-s = s.replace("import android.app.Activity;\n", "")
-s = s.replace(
-    "import android.window.OnBackInvokedCallback;\n"
-    "import android.window.OnBackInvokedDispatcher;\n",
-    ""
-)
-if "import androidx.activity.ComponentActivity;" not in s:
-    s = s.replace(
-        "import java.io.ByteArrayInputStream;\n\n",
-        "import java.io.ByteArrayInputStream;\n\n"
-        "import androidx.activity.ComponentActivity;\n"
-        "import androidx.activity.OnBackPressedCallback;\n\n"
-    )
-s = s.replace(
-    "public final class MainActivity extends Activity {",
-    "public final class MainActivity extends ComponentActivity {"
-)
-s = s.replace("    private OnBackInvokedCallback backCallback;\n", "")
+
 s = s.replace(
 '''        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             // This WebView only renders trusted bundled files and has no INTERNET permission.
@@ -33,70 +18,38 @@ s = s.replace(
 ''',
 ''
 )
-s = s.replace(
-'''    private void registerBackHandler() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            backCallback = this::requestAppBack;
-            getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
-                OnBackInvokedDispatcher.PRIORITY_DEFAULT,
-                backCallback
-            );
-        }
-    }
-''',
-'''    private void registerBackHandler() {
-        getOnBackPressedDispatcher().addCallback(
-            this,
-            new OnBackPressedCallback(true) {
-                @Override
-                public void handleOnBackPressed() {
-                    requestAppBack();
-                }
-            }
-        );
-    }
-'''
-)
+
 s = s.replace(
 '''    @Override
     @SuppressWarnings("deprecation")
     public void onBackPressed() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            super.onBackPressed();
-        } else {
-            requestAppBack();
-        }
-    }
+''',
+'''    @Override
+    @SuppressLint("GestureBackNavigation")
+    @SuppressWarnings("deprecation")
+    public void onBackPressed() {
+'''
+)
 
-''',
-''
-)
-s = s.replace(
-'''        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && backCallback != null) {
-            getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(backCallback);
-            backCallback = null;
-        }
-''',
-''
-)
 main.write_text(s)
 
-# Release configuration and AndroidX dependency.
+# No AndroidX is required for this application.
 gradle = root / "app/build.gradle.kts"
 g = gradle.read_text()
-if 'androidx.activity:activity:' not in g:
-    g += '\n\ndependencies {\n    implementation("androidx.activity:activity:1.13.0")\n}\n'
+if "dependencies {" in g and "androidx.activity:activity:" in g:
+    before, _, tail = g.partition("\n\ndependencies {")
+    if "androidx.activity:activity:" in tail:
+        g = before.rstrip() + "\n"
 gradle.write_text(g)
 
 props = root / "gradle.properties"
 p = props.read_text()
 p = p.replace("android.useAndroidX=false\n", "")
-if "android.useAndroidX=true" not in p:
-    p += "\nandroid.useAndroidX=true\n"
+p = p.replace("android.useAndroidX=true\n", "")
 props.write_text(p)
 
-# Clean production manifest: no hardcoded debuggable, no unnecessary native-lib
-# extraction flag, no fixed orientation, no obsolete back opt-in.
+# Clean production manifest: no dangerous/runtime permissions, no INTERNET,
+# no hardcoded debuggable flag, no fixed orientation.
 manifest = root / "app/src/main/AndroidManifest.xml"
 manifest.write_text('''<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
@@ -127,7 +80,7 @@ manifest.write_text('''<?xml version="1.0" encoding="utf-8"?>
 </manifest>
 ''')
 
-# API-26-safe base theme. API-31-specific settings remain in values-v31.
+# API-26-safe base theme. API-specific theme values stay in qualified folders.
 themes = root / "app/src/main/res/values/themes.xml"
 themes.write_text('''<resources>
     <style name="Theme.WadaRu" parent="android:style/Theme.Material.NoActionBar">
@@ -159,7 +112,7 @@ for name in ("ic_launcher.xml", "ic_launcher_round.xml"):
 if old.exists():
     shutil.rmtree(old)
 
-# Disable app-data backup and device-transfer migration explicitly.
+# Disable app-data cloud backup and device-transfer migration explicitly.
 xml = root / "app/src/main/res/xml"
 xml.mkdir(parents=True, exist_ok=True)
 (xml / "backup_rules.xml").write_text('''<?xml version="1.0" encoding="utf-8"?>
@@ -190,11 +143,13 @@ xml.mkdir(parents=True, exist_ok=True)
 </data-extraction-rules>
 ''')
 
-# Fail early if any legacy back implementation survived the patch.
+# Fail early if an accidental AndroidX dependency or obsolete WebView branch appears.
 final_main = main.read_text()
-assert "onBackPressed()" not in final_main
-assert "OnBackInvoked" not in final_main
-assert "ComponentActivity" in final_main
-assert "OnBackPressedCallback" in final_main
+assert "ComponentActivity" not in final_main
+assert "OnBackPressedCallback" not in final_main
+assert "OnBackInvokedDispatcher" in final_main
+assert '@SuppressLint("GestureBackNavigation")' in final_main
+assert "setSafeBrowsingEnabled" not in final_main
+assert "androidx.activity" not in gradle.read_text()
 
-print("Production source patch applied")
+print("Production source patch applied: framework-only Activity")
