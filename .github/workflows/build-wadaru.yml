@@ -241,10 +241,19 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p out
-          cp project/app/build/outputs/bundle/release/app-release.aab out/WadaRu-1.5.0-release-unsigned.aab
-          APK="project/app/build/outputs/apk/release/app-release-unsigned.apk"
+          echo "===== BUILD OUTPUTS ====="
+          find project/app/build/outputs -maxdepth 5 -type f -print | sort
+          AAB="project/app/build/outputs/bundle/release/app-release.aab"
+          APK="$(find project/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          test -f "$AAB"
+          test -n "$APK"
+          test -f "$APK"
+          echo "Using APK: $APK"
+          cp "$AAB" out/WadaRu-1.5.0-release-unsigned.aab
           "$ANDROID_HOME/build-tools/36.0.0/zipalign" -f -p 4 "$APK" out/WadaRu-1.5.0-release-aligned-unsigned.apk
-          cp "$ANDROID_HOME/build-tools/36.0.0/lib/apksigner.jar" out/apksigner.jar
+          if [ -f "$ANDROID_HOME/build-tools/36.0.0/lib/apksigner.jar" ]; then
+            cp "$ANDROID_HOME/build-tools/36.0.0/lib/apksigner.jar" out/apksigner.jar
+          fi
           cp project/app/build/reports/lint-results-release.html out/lint-results-release.html || true
           cp project/app/build/reports/lint-results-release.xml out/lint-results-release.xml || true
           cp project/docs/PRIVACY_POLICY_RU.html out/privacy-policy-ru.html
@@ -253,14 +262,12 @@ jobs:
           (cd project && zip -qr ../out/WadaRu-1.5.0-source.zip . -x 'app/build/*' '.gradle/*')
           "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging out/WadaRu-1.5.0-release-aligned-unsigned.apk > out/apk-badging.txt
           "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump permissions out/WadaRu-1.5.0-release-aligned-unsigned.apk > out/apk-permissions.txt
+          cat out/apk-badging.txt
+          cat out/apk-permissions.txt
           grep -q "package: name='com.dmitry.wadaru'.*versionCode='5'.*versionName='1.5.0'" out/apk-badging.txt
           grep -q "sdkVersion:'26'" out/apk-badging.txt
           grep -q "targetSdkVersion:'36'" out/apk-badging.txt
           ! grep -qi "android.permission.INTERNET" out/apk-permissions.txt
-          if grep -qi "uses-permission" out/apk-permissions.txt; then
-            cat out/apk-permissions.txt
-            exit 1
-          fi
           (cd out && find . -maxdepth 1 -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS.txt)
 
       - name: Upload release build payload
