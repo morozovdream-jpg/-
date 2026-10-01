@@ -175,7 +175,7 @@ public final class MainActivity extends Activity {
             text.setTextIsSelectable(true);
             text.setText(
                 "Цвета Вада — ошибка запуска\n\n" +
-                "Версия: 1.5.2 (7)\n" +
+                "Версия: 1.5.4 (9)\n" +
                 "Устройство: " + Build.MANUFACTURER + " " + Build.MODEL + "\n" +
                 "Android API: " + Build.VERSION.SDK_INT + "\n\n" +
                 error.getClass().getName() + ": " + String.valueOf(error.getMessage()) +
@@ -253,11 +253,14 @@ final class Api33Back {
 # Version bump for diagnostic crash-fix release.
 gradle = root / "app/build.gradle.kts"
 g = gradle.read_text()
-g = g.replace("versionCode = 5", "versionCode = 8")
-g = g.replace("versionCode = 6", "versionCode = 8")
-g = g.replace('versionName = "1.5.0"', 'versionName = "1.5.3"')
-g = g.replace('versionName = "1.5.1"', 'versionName = "1.5.3"')
-g = g.replace('versionName = "1.5.2"', 'versionName = "1.5.3"')
+g = g.replace("versionCode = 5", "versionCode = 9")
+g = g.replace("versionCode = 6", "versionCode = 9")
+g = g.replace("versionCode = 7", "versionCode = 9")
+g = g.replace("versionCode = 8", "versionCode = 9")
+g = g.replace('versionName = "1.5.0"', 'versionName = "1.5.4"')
+g = g.replace('versionName = "1.5.1"', 'versionName = "1.5.4"')
+g = g.replace('versionName = "1.5.2"', 'versionName = "1.5.4"')
+g = g.replace('versionName = "1.5.3"', 'versionName = "1.5.4"')
 # Keep the app framework-only; remove accidental AndroidX dependency blocks.
 if "dependencies {" in g and "androidx.activity:activity:" in g:
     before, _, tail = g.partition("\n\ndependencies {")
@@ -280,16 +283,23 @@ proguard.write_text("""# Release entry point and API-gated compatibility islands
 
 appjs = root / "app/src/main/assets/app.js"
 js = appjs.read_text()
-js = js.replace("Версия 1.5.0.", "Версия 1.5.3.")
-js = js.replace("Версия 1.5.1.", "Версия 1.5.3.")
-js = js.replace("Версия 1.5.2.", "Версия 1.5.3.")
+js = js.replace("Версия 1.5.0.", "Версия 1.5.4.")
+js = js.replace("Версия 1.5.1.", "Версия 1.5.4.")
+js = js.replace("Версия 1.5.2.", "Версия 1.5.4.")
+js = js.replace("Версия 1.5.3.", "Версия 1.5.4.")
 appjs.write_text(js)
 
-release_notes = root / "store-listing/ru-RU/release-notes-1.5.3.txt"
+ux_patch = Path(__file__).resolve().parent / "ux154.py"
+exec(
+    compile(ux_patch.read_text(), str(ux_patch), "exec"),
+    {"root": root, "__builtins__": __builtins__},
+)
+
+release_notes = root / "store-listing/ru-RU/release-notes-1.5.4.txt"
 release_notes.write_text(
-    "Исправлен сбой запуска на Huawei/HarmonyOS Android API 31, вызванный ранним обращением "
-    "к WindowInsetsController. Оформление системных панелей теперь выполняется после создания "
-    "интерфейса и не может прервать запуск приложения.\n"
+    "Переработана навигация и фильтры каталога. Том и количество цветов теперь находятся "
+    "в стабильных отдельных группах без горизонтального прыжка, тематические категории "
+    "не дублируют фильтры, а активные условия и команды сброса всегда видны.\n"
 )
 
 manifest = root / "app/src/main/AndroidManifest.xml"
@@ -390,4 +400,4 @@ assert "OnBackPressedCallback" not in main_text
 assert "showStartupError" in main_text
 assert "androidx.activity" not in gradle.read_text()
 
-print("Production source patch applied: 1.5.3 Huawei API31 window fix + startup diagnostics")
+print("Production source patch applied: 1.5.4 stable filter/navigation UX")
